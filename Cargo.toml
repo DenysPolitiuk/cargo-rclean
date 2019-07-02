@@ -1,0 +1,10 @@
+[package]
+name = "cargo-rclean"
+version = "0.1.0"
+authors = ["boris"]
+edition = "2018"
+
+[dependencies]
+walkdir = "2.2.8"
+clap = "2.33.0"
+rayon = "1.1.0"
