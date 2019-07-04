@@ -9,6 +9,8 @@ use walkdir::WalkDir;
 
 use std::env;
 use std::fs;
+use std::io;
+use std::io::Write;
 use std::path::Path;
 
 enum Entry<'a> {
@@ -46,12 +48,13 @@ fn main() {
                 .takes_value(true)
                 .help("use specified directory as starting point"),
         )
-        // to avoid conflict when run with `cargo rclean`
+        // to avoid conflicts when running with `cargo rclean`
         .arg(Arg::with_name("rclean").hidden(true))
         .get_matches();
 
     let dryrun = matches.is_present("dry_run");
     let v = matches.is_present("verbose");
+    let interactive = matches.is_present("interactive");
     let dir = matches
         .value_of("target")
         .or(env::current_dir().unwrap().to_str())
@@ -75,9 +78,13 @@ fn main() {
                 v,
                 format!("Going to clean {} projects...", found_dirs.len()).as_str(),
             );
-            clean_folders(found_dirs)
-                .iter()
-                .for_each(|e| vprint(v, format!("Error in clean folders : {}", e).as_str()));
+
+            match interactive {
+                true => clean_folders_interact(found_dirs),
+                false => clean_folders(found_dirs),
+            }
+            .iter()
+            .for_each(|e| vprint(v, format!("Error in clean folders : {}", e).as_str()));
         }
     } else {
         vprint(v, "Nothing to clean");
@@ -124,11 +131,38 @@ fn find_applicable_folders<P: AsRef<Path>>(
     vec
 }
 
-fn clean_folders(dirs: Vec<String>) -> Vec<std::io::Error> {
+fn clean_folders(dirs: Vec<String>) -> Vec<io::Error> {
     dirs.par_iter()
         .map(|dir| {
             let path = Path::new(dir).join(Path::new(TARGET_DIR));
             fs::remove_dir_all(path).map_err(|e| e)
+        })
+        .filter_map(|x| x.err())
+        .collect()
+}
+
+fn clean_folders_interact(dirs: Vec<String>) -> Vec<io::Error> {
+    let mut first = true;
+    dirs.iter()
+        .map(|dir| {
+            if !first {
+                first = false;
+                println!();
+            }
+
+            let path = Path::new(dir).join(Path::new(TARGET_DIR));
+
+            print!("Delete {} ? (y/N) ", path.display());
+            let _ = io::stdout().flush();
+
+            let mut input = String::new();
+            io::stdin().read_line(&mut input).unwrap();
+            let input = input.trim();
+
+            match input {
+                "y" | "Y" => fs::remove_dir_all(path).map_err(|e| e),
+                _ => Ok(()),
+            }
         })
         .filter_map(|x| x.err())
         .collect()
